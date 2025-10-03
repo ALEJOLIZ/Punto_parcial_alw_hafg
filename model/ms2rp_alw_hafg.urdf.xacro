@@ -1,0 +1,160 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="scara_min_5links">
+
+  <!-- ===== PROPIEDADES (m) ===== -->
+  <xacro:property name="brad" value="${5/100}"/>      <!-- base: radio -->
+  <xacro:property name="blen" value="${10/100}"/>     <!-- base: alto -->
+
+  <xacro:property name="l1x" value="${20/100}"/>      <!-- a2 -->
+  <xacro:property name="l2x" value="${15/100}"/>      <!-- a3 -->
+  <xacro:property name="rod_r" value="${2/100}"/>     <!-- radio visual brazos -->
+
+  <!-- Prismático (vástago que baja en -Z) -->
+  <xacro:property name="tool_len" value="${11/100}"/>
+  <xacro:property name="tool_rad" value="${1/100}"/>
+  <xacro:property name="tool_offset" value="${2/100}"/>  <!-- offset +Z donde inicia el prismático -->
+  <xacro:property name="tool_stroke" value="${max(0, blen + tool_offset - tool_len)}"/>
+  <xacro:property name="eps" value="${0.0001}"/>
+
+  <!-- Auxiliares (rad) -->
+  <xacro:property name="half_pi" value="${1.57079632679}"/>   <!-- pi/2 -->
+  <xacro:property name="rad120"  value="${half_pi*4/3}"/>     <!-- 2pi/3 -->
+
+  <!-- ===== MALLA ESTÁTICA (pieza fija al mundo) ===== -->
+  <xacro:property name="workpiece_mesh_file"  value="package://trayectoria_parcial/mesh/Test_1_Model.stl"/>
+  <xacro:property name="workpiece_mesh_scale" value="0.001 0.001 0.001"/>  <!-- STL en mm -> m -->
+  <!-- Ajusta estas dos para posicionar la pieza respecto a base_link -->
+  <xacro:property name="workpiece_xyz"        value="0 0 0"/>
+  <xacro:property name="workpiece_rpy"        value="0 0 0"/>
+
+  <!-- ===== MACROS ===== -->
+  <xacro:macro name="cyl_link" params="name radius length r g b a">
+    <link name="${name}">
+      <visual>
+        <geometry><cylinder radius="${radius}" length="${length}"/></geometry>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <material name="${name}_mat"><color rgba="${r} ${g} ${b} ${a}"/></material>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${radius}" length="${length}"/></geometry>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+      </collision>
+      <inertial>
+        <mass value="1"/><origin xyz="0 0 0"/>
+        <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+  <!-- cilindro horizontal a lo largo de X -->
+  <xacro:macro name="rod_x" params="name L R r g b a">
+    <link name="${name}">
+      <visual>
+        <geometry><cylinder radius="${R}" length="${L}"/></geometry>
+        <origin xyz="${L/2} 0 0" rpy="0 ${half_pi} 0"/>
+        <material name="${name}_mat"><color rgba="${r} ${g} ${b} ${a}"/></material>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${R}" length="${L}"/></geometry>
+        <origin xyz="${L/2} 0 0" rpy="0 ${half_pi} 0"/>
+      </collision>
+      <inertial>
+        <mass value="1"/><origin xyz="0 0 0"/>
+        <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+  <!-- cilindro vertical anclado arriba (crece hacia -Z) -->
+  <xacro:macro name="rod_z_top" params="name L R eps r g b a">
+    <link name="${name}">
+      <visual>
+        <geometry><cylinder radius="${R}" length="${L}"/></geometry>
+        <origin xyz="0 0 ${-L/2 + eps}" rpy="0 0 0"/>
+        <material name="${name}_mat"><color rgba="${r} ${g} ${b} ${a}"/></material>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${R}" length="${L}"/></geometry>
+        <origin xyz="0 0 ${-L/2 + eps}" rpy="0 0 0"/>
+      </collision>
+      <inertial>
+        <mass value="1"/><origin xyz="0 0 0"/>
+        <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+  <!-- ===== CADENA DEL ROBOT ===== -->
+  <link name="base_link"/>
+
+  <!-- base_cyl apoyada en z=0 -->
+  <joint name="base_to_base_cyl_joint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="base_cyl"/>
+    <origin xyz="0 0 ${blen/2}" rpy="0 0 0"/>
+  </joint>
+  <xacro:cyl_link name="base_cyl" radius="${brad}" length="${blen}" r="0.85" g="0.85" b="0.85" a="1"/>
+
+  <!-- J1: revoluta ±90° -->
+  <joint name="joint1" type="revolute">
+    <parent link="base_cyl"/>
+    <child  link="link1"/>
+    <origin xyz="0 0 ${blen/2}" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="${-half_pi}" upper="${half_pi}" effort="50" velocity="1.0"/>
+  </joint>
+  <xacro:rod_x name="link1" L="${l1x}" R="${rod_r}" r="0.0" g="0.6" b="0.0" a="1"/>
+
+  <!-- J2: revoluta ±120° -->
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/>
+    <child  link="link2"/>
+    <origin xyz="${l1x} 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="${-rad120}" upper="${rad120}" effort="50" velocity="1.0"/>
+  </joint>
+  <xacro:rod_x name="link2" L="${l2x}" R="${rod_r}" r="0.1" g="0.4" b="0.9" a="1"/>
+
+  <!-- J3 prismático: link hijo = base_tool -->
+  <joint name="joint_tool" type="prismatic">
+    <parent link="link2"/>
+    <child  link="base_tool"/>
+    <origin xyz="${l2x} 0 ${tool_offset}" rpy="0 0 0"/>
+    <axis xyz="0 0 -1"/>
+    <limit lower="0.0" upper="${tool_stroke}" effort="50" velocity="0.5"/>
+  </joint>
+  <xacro:rod_z_top name="base_tool" L="${tool_len}" R="${tool_rad}" eps="${eps}"
+                   r="0.8" g="0.1" b="0.1" a="1"/>
+
+  <!-- ===== PIEZA FIJA (NO SE MUEVE CON EL ROBOT) ===== -->
+  <link name="workpiece_mesh">
+    <visual>
+      <geometry>
+        <mesh filename="${workpiece_mesh_file}" scale="${workpiece_mesh_scale}"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <material name="workpiece_mat">
+        <color rgba="0.8 0.8 0.8 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="${workpiece_mesh_file}" scale="${workpiece_mesh_scale}"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="0.1"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="1e-4" ixy="0" ixz="0" iyy="1e-4" iyz="0" izz="1e-4"/>
+    </inertial>
+  </link>
+
+  <joint name="workpiece_to_base" type="fixed">
+    <parent link="base_link"/>
+    <child  link="workpiece_mesh"/>
+    <!-- Ajusta la posición/orientación de la pieza aquí -->
+    <origin xyz="${workpiece_xyz}" rpy="${workpiece_rpy}"/>
+  </joint>
+
+</robot>
